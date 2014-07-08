@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import argparse
 import json
 import re
 import urllib
@@ -10,8 +11,16 @@ BASE_URI = 'http://search.ccb.state.or.us'
 
 
 def main():
+    parser = argparse.ArgumentParser(description='Scrape CCB License Information')
+    parser.add_argument('term', help='The search term')
+    parser.add_argument('--name', action='store_true', help='Indicates the search term is a person\'s name')
+    
+    args = parser.parse_args()
+
     client = LicenseScraper(BASE_URI)
-    client.search(term='Smi')
+    
+    key = 'name' if args.name else 'term'
+    print client.search(**{key:args.term})
 
 
 class LicenseScraper(helper.Scraper):
@@ -31,7 +40,6 @@ class LicenseScraper(helper.Scraper):
         - Verify your spelling. A simple misspelling of a word will cause your 
         search to fail.
 
-
         :returns: List of CCB License Info
         """
         q = '%%%s' % name if name else (term or '')
@@ -40,36 +48,41 @@ class LicenseScraper(helper.Scraper):
         content = self.get('/search/search_results_list.asp', 
                            params=dict(search_criteria=q))
 
-        # print '>>>', content.find('table', attrs={'class': 'bodyWellContentTable'}).find('table').findAll('tr')[4:]
-
-        with open('output.html', 'wb') as file:
-            file.write(content.prettify('utf-8'))
+        # with open('output.html', 'wb') as file:
+        #     file.write(content.prettify('utf-8'))
 
         tables = content.findAll('table', attrs={'class': 'bodyText'})
+        parsed = [x for x in [self.parse(table) for table in tables] if x]
 
-        print '>>> Tables: ', len(tables)
+        # with open('output.json', 'w') as fp:
+        #     json.dump(parsed, fp, indent=4)
 
-        print tables[0]
-
-        with open('output.json', 'w') as fp:
-            json.dump([self.parse(table) for table in tables],
-                      fp, indent=4)
+        return json.dumps(parsed, indent=4)
 
 
     def parse(self, table):
         """Extract all data from a table of results
         """
-        header = self.header(table.findAll('tr')[1]) # the header is the second row all the time
-        print 'Header is: ', header
+        trs = table.findAll('tr')
+        description = trs[0].find('td').text.split('&mdash')[0].strip()
+        header = self.header(trs[1]) # the header is the second row all the time
+        trs = None
+
         rows = []
+
         try:
             for tr in table.findAll('tr', attrs={'valign':'top'}):
                 rows.extend([self.row(tds) for tds in chunks(tr.findAll('td'), 5)])
-            return [dict(zip(header, row)) for row in rows if row]
+                results = [dict(zip(header, row)) for row in rows if row]
+            
+            total = len(results)
+            return {'description':description, 'total':total, 'results':results} if total else None
         except Exception, e:
             pass
 
     def header(self, tr):
+        """Extract the header from the table (used as keys for the data items)
+        """
         return tuple([helper.slugify(td.text) for td in tr.findAll('td')] + ['url'])
 
     def row(self, tds):
@@ -85,13 +98,11 @@ class LicenseScraper(helper.Scraper):
         pass
 
 
-def chunks(l, n):
+def chunks(items, length=1):
     """Some of the rows present chunks longer than 5 tds
     We need to break these into smaller chunks
     """
-    if n < 1:
-        n = 1
-    return [l[i:i + n] for i in range(0, len(l), n)]
+    return [items[i:i + length] for i in range(0, len(items), length)]
 
 
 if __name__ == "__main__":

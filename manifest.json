@@ -1,0 +1,15 @@
+{
+  "bot_id": "ccb_licenses",
+  "title": "My simple bot",
+  "description": "This is a simple bot",
+  "language": "python",
+  "data_type": "primary data",
+  "identifying_fields": [
+    "number"
+  ],
+  "files": [
+    "scraper.py",
+    "helper.py"
+  ],
+  "frequency": "monthly"
+}
